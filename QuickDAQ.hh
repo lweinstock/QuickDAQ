@@ -59,10 +59,10 @@ public:
     virtual bool OnExceptionInMainLoop() override;
 
     struct {
-        unsigned nPoints {100};
-        float fStart {1e3};
-        float fStop {1e6};
-        float vAmplitude {1.};
+        unsigned nPoints {10};
+        float fStart {100e3};
+        float fStop {10e6};
+        float vAmplitude {20.};
         std::string fileName {"test.root"};
     } DAQSettings;
 

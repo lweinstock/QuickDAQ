@@ -33,7 +33,7 @@ MainFrame::MainFrame(const wxString &title)
     // Osci setup
     wxStaticText* txtOsciIP = new wxStaticText(this, wxID_ANY, "Oscilloscope IP: ");
     wxStaticText* txtOsciPort = new wxStaticText(this, wxID_ANY, "Oscilloscope Port: ");
-    m_tcOsciIP = new wxTextCtrl(this, wxID_ANY, "192.168.2.101");
+    m_tcOsciIP = new wxTextCtrl(this, wxID_ANY, "192.168.1.102");
     m_tcOsciPort = new wxTextCtrl(this, wxID_ANY, "5555");
     wxButton* btnOsciConnect = new wxButton(this, BTN_OSCI_CONN, "Connect");
     gSizerUpper->Add(txtOsciIP, 0, wxALL | wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT, 5);
@@ -46,7 +46,7 @@ MainFrame::MainFrame(const wxString &title)
     // Osci setup
     wxStaticText* txtFGenIP = new wxStaticText(this, wxID_ANY, "Function Generator IP: ");
     wxStaticText* txtFGenPort = new wxStaticText(this, wxID_ANY, "Function Generator Port: ");
-    m_tcFGenIP = new wxTextCtrl(this, wxID_ANY, "192.168.2.102");
+    m_tcFGenIP = new wxTextCtrl(this, wxID_ANY, "192.168.1.207");
     m_tcFGenPort = new wxTextCtrl(this, wxID_ANY, "5555");
     wxButton* btnFGenConnect = new wxButton(this, BTN_FGEN_CONN, "Connect");
     gSizerUpper->Add(txtFGenIP, 0, wxALL | wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT, 5);
@@ -108,17 +108,18 @@ MainFrame::~MainFrame()
 void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
 {
     // Take measurement
-    while ( !wxGetApp().osci.triggered() ) { usleep(100e3); }
-    vector<double> time, volt;
-    wxGetApp().osci.read_sample_data(1, time, volt);
-    m_vamp = wxGetApp().osci.get_meas(1, labdev::osci::VAMP);
-    wxLogMessage("Sample %i: VAmpl = %.2f V", m_counter, m_vamp);
+    //while ( !wxGetApp().osci.triggered() ) { usleep(100e3); }
+    //vector<double> time, volt;
+    //wxGetApp().osci.read_sample_data(1, time, volt);
+    m_vamp = wxGetApp().osci.get_meas(1, labdev::osci::VPP);
+    wxLogMessage("Sample %i: f = %fHz \t VAmpl = %f V", m_counter, m_freq, m_vamp);
     m_tree.Fill();
 
     // Prepare next measurement
     m_counter++;
     if (m_counter == m_freqSweep.size()) {
         m_timerSweep.Stop();
+        m_freqSweep.clear();
         m_counter = 0;
         m_tree.Write();
         //m_file.Write();
@@ -129,6 +130,7 @@ void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
     m_freq = m_freqSweep.at(m_counter);
     wxGetApp().fgen.set_freq(1, m_freq);
     wxGetApp().osci.set_horz_base(0.25/m_freq);  // One period in four divisions
+    wxGetApp().Yield();
     return;
 }
 
@@ -167,12 +169,17 @@ void MainFrame::OnButtonFGenConnect(wxCommandEvent &ev)
 void MainFrame::OnButtonStart(wxCommandEvent &ev)
 {
     // Sweep setup
+    m_freqSweep.clear();
+    m_counter = 0;
     float fsta = wxGetApp().DAQSettings.fStart;
     float fsto = wxGetApp().DAQSettings.fStop;
     unsigned n =  wxGetApp().DAQSettings.nPoints;
-    float step = (fsto - fsta)/(n - 1);
-    for (unsigned i = 0; i < n; i++)
-        m_freqSweep.push_back(fsta + step * i);
+    //float step = (fsto - fsta)/(n - 1);
+    float step = (log10(fsto) - log10(fsta))/(n-1);
+    for (unsigned i = 0; i < n; i++) {
+        float f = pow(10, step * i + log10(fsta));
+        m_freqSweep.push_back(f);
+    }
 
     // Function generator setup
     wxGetApp().fgen.set_wvfm(1, labdev::fgen::SINE);
@@ -190,7 +197,6 @@ void MainFrame::OnButtonStart(wxCommandEvent &ev)
         m_file.Close();
     m_file.Open(wxGetApp().DAQSettings.fileName.c_str(), "RECREATE");
 
-    m_counter = 0;
     m_freq = fsta;
     m_timerSweep.Start(1000);
 
@@ -199,6 +205,12 @@ void MainFrame::OnButtonStart(wxCommandEvent &ev)
 
 void MainFrame::OnButtonStop(wxCommandEvent &ev)
 {
+    m_timerSweep.Stop();
+    m_freqSweep.clear();
+    m_counter = 0;
+    m_tree.Write();
+    //m_file.Write();
+    m_file.Close();
     return;
 }
 
