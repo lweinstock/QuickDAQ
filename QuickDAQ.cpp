@@ -1,6 +1,8 @@
 #include "QuickDAQ.hh"
 
 #include <labdev/exceptions.hh>
+#include <labdev/devices/rigol/ds1000z.hh>
+#include <labdev/devices/rigol/dg4000.hh>
 
 using namespace std;
 
@@ -11,12 +13,8 @@ using namespace std;
 MainFrame::MainFrame(const wxString &title)
     : wxFrame(NULL, wxID_ANY, title, wxDefaultPosition, wxSize(1400,800), 
         wxDEFAULT_FRAME_STYLE | wxWANTS_CHARS | wxMAXIMIZE), 
-      m_timerSweep(this, wxID_ANY), m_tree(), m_file()
+      m_timerSweep(this, wxID_ANY), m_tree(nullptr), m_file(nullptr)
 {
-    // TTree setup
-    m_tree.Branch("vamp", &m_vamp);
-    m_tree.Branch("freq", &m_freq);
-
     wxBoxSizer* globalSizer = new wxBoxSizer(wxHORIZONTAL);
     this->SetSizer(globalSizer);
 
@@ -33,7 +31,7 @@ MainFrame::MainFrame(const wxString &title)
     // Osci setup
     wxStaticText* txtOsciIP = new wxStaticText(this, wxID_ANY, "Oscilloscope IP: ");
     wxStaticText* txtOsciPort = new wxStaticText(this, wxID_ANY, "Oscilloscope Port: ");
-    m_tcOsciIP = new wxTextCtrl(this, wxID_ANY, "192.168.1.102");
+    m_tcOsciIP = new wxTextCtrl(this, wxID_ANY, "192.168.2.101");
     m_tcOsciPort = new wxTextCtrl(this, wxID_ANY, "5555");
     wxButton* btnOsciConnect = new wxButton(this, BTN_OSCI_CONN, "Connect");
     gSizerUpper->Add(txtOsciIP, 0, wxALL | wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT, 5);
@@ -46,7 +44,7 @@ MainFrame::MainFrame(const wxString &title)
     // Osci setup
     wxStaticText* txtFGenIP = new wxStaticText(this, wxID_ANY, "Function Generator IP: ");
     wxStaticText* txtFGenPort = new wxStaticText(this, wxID_ANY, "Function Generator Port: ");
-    m_tcFGenIP = new wxTextCtrl(this, wxID_ANY, "192.168.1.207");
+    m_tcFGenIP = new wxTextCtrl(this, wxID_ANY, "192.168.2.102");
     m_tcFGenPort = new wxTextCtrl(this, wxID_ANY, "5555");
     wxButton* btnFGenConnect = new wxButton(this, BTN_FGEN_CONN, "Connect");
     gSizerUpper->Add(txtFGenIP, 0, wxALL | wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT, 5);
@@ -91,9 +89,6 @@ MainFrame::MainFrame(const wxString &title)
     this->Bind(wxEVT_BUTTON, &MainFrame::OnButtonStart, this, BTN_START);
     this->Bind(wxEVT_BUTTON, &MainFrame::OnButtonStop, this, BTN_STOP);
     this->Bind(wxEVT_PG_CHANGED, &MainFrame::OnSettingChange, this);
-
-    // Start 500ms timer
-    //m_timerSweep.Start(500);
     return;
 }
 
@@ -107,30 +102,32 @@ MainFrame::~MainFrame()
 
 void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
 {
-    // Take measurement
-    //while ( !wxGetApp().osci.triggered() ) { usleep(100e3); }
-    //vector<double> time, volt;
-    //wxGetApp().osci.read_sample_data(1, time, volt);
-    m_vamp = wxGetApp().osci.get_meas(1, labdev::osci::VPP);
-    wxLogMessage("Sample %i: f = %fHz \t VAmpl = %f V", m_counter, m_freq, m_vamp);
-    m_tree.Fill();
 
-    // Prepare next measurement
-    m_counter++;
-    if (m_counter == m_freqSweep.size()) {
-        m_timerSweep.Stop();
-        m_freqSweep.clear();
-        m_counter = 0;
-        m_tree.Write();
-        //m_file.Write();
-        m_file.Close();
-        return;
-    }
-   
+    auto fgen_ptr = wxGetApp().GetFGen();
+    auto osci_ptr = wxGetApp().GetOsci();
+
+    // Set frequency and osci time base
     m_freq = m_freqSweep.at(m_counter);
-    wxGetApp().fgen.set_freq(1, m_freq);
-    wxGetApp().osci.set_horz_base(0.25/m_freq);  // One period in four divisions
-    wxGetApp().Yield();
+    fgen_ptr->set_freq(m_fgenChan, m_freq);
+    osci_ptr->set_horz_base(0.25/m_freq);
+
+    // Wait until waveform has settled
+    usleep(500e3);  // Replace by fgen->wait_to_complete() ?
+
+    // Take measurement
+    m_vpp = osci_ptr->get_meas(m_osciChan, labdev::osci::VPP);
+    osci_ptr->read_sample_data(m_osciChan, m_volt, m_time);
+
+    // Store data in tree
+    m_tree->Fill();
+    wxLogMessage("Meas %03i: f=%.3eHz, VPP=%.3fV, n=%lu", 
+        m_counter, m_freq, m_vpp, m_volt.size());
+
+    // Increase counter
+    m_counter++;
+    if ( m_counter == m_freqSweep.size() )
+        this->StopMeasurement();
+
     return;
 }
 
@@ -138,79 +135,41 @@ void MainFrame::OnButtonOsciConnect(wxCommandEvent &ev)
 {
     string ip_addr = string(m_tcOsciIP->GetValue().mb_str());
     unsigned port = wxAtoi(m_tcOsciPort->GetValue());
-    wxLogMessage("Connecting to oscillscope %s:%u...", ip_addr.c_str(), port);
-    try {
-        wxGetApp().OsciComm.open(ip_addr, port);
-    } catch (labdev::exception &ex) {
-        wxLogMessage("Failed to connect: %s", ex.what());
-        return;
-    }
-    wxGetApp().osci.connect(&wxGetApp().OsciComm);
-    wxLogMessage("Connected to %s", wxGetApp().osci.get_info());
+    wxGetApp().InitOsci(ip_addr, port);
     return;
 }
 
 void MainFrame::OnButtonFGenConnect(wxCommandEvent &ev)
 {
+
     string ip_addr = string(m_tcFGenIP->GetValue().mb_str());
     unsigned port = wxAtoi(m_tcFGenPort->GetValue());
-    wxLogMessage("Connecting to function generator %s:%u...", ip_addr.c_str(), port);
-    try {
-        wxGetApp().FGenComm.open(ip_addr, port);
-    } catch (labdev::exception &ex) {
-        wxLogMessage("Failed to connect: %s", ex.what());
-        return;
-    }
-    wxGetApp().fgen.connect(&wxGetApp().FGenComm);
-    wxLogMessage("Connected to %s", wxGetApp().fgen.get_info());
+    wxGetApp().InitFGen(ip_addr, port);
     return;
 }
 
 void MainFrame::OnButtonStart(wxCommandEvent &ev)
 {
-    // Sweep setup
-    m_freqSweep.clear();
-    m_counter = 0;
-    float fsta = wxGetApp().DAQSettings.fStart;
-    float fsto = wxGetApp().DAQSettings.fStop;
-    unsigned n =  wxGetApp().DAQSettings.nPoints;
-    //float step = (fsto - fsta)/(n - 1);
-    float step = (log10(fsto) - log10(fsta))/(n-1);
-    for (unsigned i = 0; i < n; i++) {
-        float f = pow(10, step * i + log10(fsta));
-        m_freqSweep.push_back(f);
-    }
-
     // Function generator setup
-    wxGetApp().fgen.set_wvfm(1, labdev::fgen::SINE);
-    wxGetApp().fgen.set_ampl(1, wxGetApp().DAQSettings.vAmplitude);
-    wxGetApp().fgen.set_offset(1, 0);
-    wxGetApp().fgen.set_phase(1, 0);    
-    wxGetApp().fgen.set_freq(1, fsta);
-    wxGetApp().fgen.enable_channel(1);
+    auto fgen_ptr = wxGetApp().GetFGen();
+    fgen_ptr->set_wvfm(m_fgenChan, labdev::fgen::SINE);
+    fgen_ptr->set_ampl(m_fgenChan, wxGetApp().DAQSettings.vAmplitude);
+    fgen_ptr->set_offset(m_fgenChan, 0);
+    fgen_ptr->set_phase(m_fgenChan, 0);    
+    fgen_ptr->set_freq(m_fgenChan, wxGetApp().DAQSettings.fStart);
+    fgen_ptr->enable_channel(1);
 
     // Oscilloscope setup
-    wxGetApp().osci.set_horz_base(0.25/fsta);
+    auto osci_ptr = wxGetApp().GetOsci();
+    osci_ptr->set_horz_base(0.25/wxGetApp().DAQSettings.fStart);
 
-    // Create output file
-    if (m_file.IsOpen())
-        m_file.Close();
-    m_file.Open(wxGetApp().DAQSettings.fileName.c_str(), "RECREATE");
-
-    m_freq = fsta;
-    m_timerSweep.Start(1000);
-
+    this->StartMeasurement();
     return;
 }
 
 void MainFrame::OnButtonStop(wxCommandEvent &ev)
 {
-    m_timerSweep.Stop();
-    m_freqSweep.clear();
-    m_counter = 0;
-    m_tree.Write();
-    //m_file.Write();
-    m_file.Close();
+    this->StopMeasurement();
     return;
 }
 
@@ -241,6 +200,72 @@ void MainFrame::OnSettingChange(wxPropertyGridEvent &ev)
     return;
 }
 
+void MainFrame::ReadTrace(vector<double> time, vector<double> volt)
+{
+    auto osci_ptr = wxGetApp().GetOsci();
+    while ( !osci_ptr->triggered() ) 
+    {
+        wxLogMessage("Waiting for trigger...");
+        usleep(500e3);
+    }
+    time.clear();
+    volt.clear();
+    osci_ptr->read_sample_data(m_osciChan, time, volt);
+    return;
+}
+
+void MainFrame::StartMeasurement()
+{
+    // Create output file
+    if ( m_file && m_file->IsOpen() ) {
+        m_file->Close();
+        //delete m_file;
+        //delete m_tree;
+        //m_file = nullptr;
+        //m_tree = nullptr;
+    }
+    m_file = new TFile(wxGetApp().DAQSettings.fileName.c_str(), "RECREATE");
+    m_tree = new TTree("dataTree", "data");
+    m_tree->Branch("vamp", &m_vpp);
+    m_tree->Branch("freq", &m_freq);
+    m_tree->Branch("time", &m_time);
+    m_tree->Branch("voltage", &m_volt);
+
+    // Sweep setup
+    m_freqSweep.clear();
+    m_counter = 0;
+    float fsta = wxGetApp().DAQSettings.fStart;
+    float fsto = wxGetApp().DAQSettings.fStop;
+    unsigned n =  wxGetApp().DAQSettings.nPoints;
+    //float step = (fsto - fsta)/(n - 1);
+    float step = (log10(fsto) - log10(fsta))/(n-1);
+    for (unsigned i = 0; i < n; i++) {
+        float f = pow(10, step * i + log10(fsta));
+        m_freqSweep.push_back(f);
+    }
+
+    // Start timer
+    m_timerSweep.Start(1000);
+    return;
+}
+
+void MainFrame::StopMeasurement()
+{
+    m_timerSweep.Stop();
+    m_freqSweep.clear();
+    m_counter = 0;
+
+    if ( m_file && m_file->IsOpen() ) {
+        m_tree->Write();
+        m_file->Close();
+        //delete m_file;
+        //delete m_tree;
+        //m_file = nullptr;
+        //m_tree = nullptr;
+    }
+    return;
+}
+
 /*
  *      A P P
  */
@@ -262,4 +287,40 @@ bool QuickDAQ::OnExceptionInMainLoop()
         wxMessageBox(ex.what(), "C++ Exception Caught", wxOK);
     }
     return true;
+}
+
+void QuickDAQ::InitOsci(std::string ip, unsigned port)
+{
+    // Connect to device
+    wxLogMessage("Connecting to oscillscope %s:%u...", ip.c_str(), port);
+    try {
+        if (m_osciComm.good()) 
+            m_osciComm.close();
+        m_osciComm.open(ip, port);
+    } catch (labdev::exception &ex) {
+        m_osciComm.close();
+        wxLogMessage("Failed to connect: %s", ex.what());
+        return;
+    }
+    m_osci = make_shared<labdev::ds1000z>(&m_osciComm);
+    wxLogMessage("Connected to %s", m_osci->get_info());
+    return;
+}
+
+void QuickDAQ::InitFGen(std::string ip, unsigned port)
+{
+    // Connect to device
+    wxLogMessage("Connecting to function generator %s:%u...", ip.c_str(), port);
+    try {
+        if (m_fgenComm.good()) 
+            m_fgenComm.close();
+        m_fgenComm.open(ip, port);
+    } catch (labdev::exception &ex) {
+        m_fgenComm.close();
+        wxLogMessage("Failed to connect: %s", ex.what());
+        return;
+    }
+    m_fgen = make_shared<labdev::dg4000>(&m_fgenComm);
+    wxLogMessage("Connected to %s", m_fgen->get_info());
+    return;
 }

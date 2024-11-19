@@ -11,8 +11,8 @@
 #include <TTree.h>
 
 #include <labdev/tcpip_interface.hh>
-#include <labdev/devices/rigol/ds1000z.hh>
-#include <labdev/devices/rigol/dg4000.hh>
+#include <labdev/devices/osci.hh>
+#include <labdev/devices/fgen.hh>
 
 #include <memory>
 
@@ -29,6 +29,10 @@ public:
     void OnButtonStop(wxCommandEvent &ev);
     void OnSettingChange(wxPropertyGridEvent &ev);
 
+    void ReadTrace(std::vector<double> time, std::vector<double> volt);
+    void StartMeasurement();
+    void StopMeasurement();
+
 protected:
     wxTextCtrl* m_txtLog;
     wxTextCtrl* m_tcOsciIP;
@@ -41,13 +45,15 @@ private:
     wxLog* m_log;
     wxTimer m_timerSweep;
 
-    TTree m_tree;
-    TFile m_file;
+    TTree* m_tree;  // Root objects with raw pointers, since root does its own 
+    TFile* m_file;  // resource management/ownership ...
 
     float m_freq {0};
-    float m_vamp {0};
+    float m_vpp {0};
     unsigned m_counter {0};
+    unsigned m_osciChan {1}, m_fgenChan {1};
     std::vector<float> m_freqSweep {};
+    std::vector<double> m_time, m_volt;
 };
 
 class QuickDAQ : public wxApp 
@@ -66,15 +72,19 @@ public:
         std::string fileName {"test.root"};
     } DAQSettings;
 
-    labdev::tcpip_interface OsciComm;
-    labdev::tcpip_interface FGenComm;
-    labdev::ds1000z osci;
-    labdev::dg4000 fgen;
+    void InitOsci(std::string ip, unsigned port);
+    void InitFGen(std::string ip, unsigned port);
+    std::shared_ptr<labdev::osci> GetOsci() { return m_osci; }
+    std::shared_ptr<labdev::fgen> GetFGen() { return m_fgen; }
 
 protected:
     MainFrame* m_mainFrame;
     
 private:
+    labdev::tcpip_interface m_osciComm;
+    labdev::tcpip_interface m_fgenComm;
+    std::shared_ptr<labdev::osci> m_osci{};
+    std::shared_ptr<labdev::fgen> m_fgen{};
 };
 
 DECLARE_APP(QuickDAQ);    
