@@ -22,12 +22,12 @@ public:
     MainFrame(const wxString &title);
     ~MainFrame();
 
-    void OnTimerUpdate(wxTimerEvent &ev);
     void OnButtonOsciConnect(wxCommandEvent &ev);
     void OnButtonFGenConnect(wxCommandEvent &ev);
     void OnButtonStart(wxCommandEvent &ev);
     void OnButtonStop(wxCommandEvent &ev);
     void OnSettingChange(wxPropertyGridEvent &ev);
+    void OnTimerUpdate(wxTimerEvent &ev);
 
     void ReadTrace(std::vector<double> time, std::vector<double> volt);
     void StartMeasurement();

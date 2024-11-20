@@ -100,37 +100,6 @@ MainFrame::~MainFrame()
     return;
 }
 
-void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
-{
-
-    auto fgen_ptr = wxGetApp().GetFGen();
-    auto osci_ptr = wxGetApp().GetOsci();
-
-    // Set frequency and osci time base
-    m_freq = m_freqSweep.at(m_counter);
-    fgen_ptr->set_freq(m_fgenChan, m_freq);
-    osci_ptr->set_horz_base(0.25/m_freq);
-
-    // Wait until waveform has settled
-    usleep(500e3);  // Replace by fgen->wait_to_complete() ?
-
-    // Take measurement
-    m_vpp = osci_ptr->get_meas(m_osciChan, labdev::osci::VPP);
-    osci_ptr->read_sample_data(m_osciChan, m_volt, m_time);
-
-    // Store data in tree
-    m_tree->Fill();
-    wxLogMessage("Meas %03i: f=%.3eHz, VPP=%.3fV, n=%lu", 
-        m_counter, m_freq, m_vpp, m_volt.size());
-
-    // Increase counter
-    m_counter++;
-    if ( m_counter == m_freqSweep.size() )
-        this->StopMeasurement();
-
-    return;
-}
-
 void MainFrame::OnButtonOsciConnect(wxCommandEvent &ev)
 {
     string ip_addr = string(m_tcOsciIP->GetValue().mb_str());
@@ -200,17 +169,42 @@ void MainFrame::OnSettingChange(wxPropertyGridEvent &ev)
     return;
 }
 
-void MainFrame::ReadTrace(vector<double> time, vector<double> volt)
+
+void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
 {
+
+    auto fgen_ptr = wxGetApp().GetFGen();
     auto osci_ptr = wxGetApp().GetOsci();
+
+    // Set frequency and osci time base
+    m_freq = m_freqSweep.at(m_counter);
+    fgen_ptr->set_freq(m_fgenChan, m_freq);
+    osci_ptr->set_horz_base(0.25/m_freq);
+
+    // Wait until waveform has settled
+    usleep(500e3);  // Replace by fgen->wait_to_complete() ?
+
     while ( !osci_ptr->triggered() ) 
     {
         wxLogMessage("Waiting for trigger...");
+        wxYield();
         usleep(500e3);
     }
-    time.clear();
-    volt.clear();
-    osci_ptr->read_sample_data(m_osciChan, time, volt);
+
+    // Take measurement
+    m_vpp = osci_ptr->get_meas(m_osciChan, labdev::osci::VPP);
+    osci_ptr->read_sample_data(m_osciChan, m_volt, m_time);
+
+    // Store data in tree
+    m_tree->Fill();
+    wxLogMessage("Meas %03i: f=%.3eHz, VPP=%.3fV, n=%lu", 
+        m_counter, m_freq, m_vpp, m_volt.size());
+
+    // Increase counter
+    m_counter++;
+    if ( m_counter == m_freqSweep.size() )
+        this->StopMeasurement();
+
     return;
 }
 
