@@ -12,7 +12,7 @@ using namespace std;
 
 MainFrame::MainFrame(const wxString &title)
     : wxFrame(NULL, wxID_ANY, title, wxDefaultPosition, wxSize(1400,800), 
-        wxDEFAULT_FRAME_STYLE | wxWANTS_CHARS | wxMAXIMIZE), 
+        wxDEFAULT_FRAME_STYLE | wxWANTS_CHARS), 
       m_timerSweep(this, wxID_ANY), m_tree(nullptr), m_file(nullptr)
 {
     wxBoxSizer* globalSizer = new wxBoxSizer(wxHORIZONTAL);
@@ -74,8 +74,10 @@ MainFrame::MainFrame(const wxString &title)
     bSizerLower->Add(btnStop, 1, wxALL | wxEXPAND, 5);
 
     // Right part: log
+    wxFont mono(12, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
     m_txtLog = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, 
         wxDefaultSize, wxTE_MULTILINE | wxTE_READONLY);
+    m_txtLog->SetFont(mono);
     globalSizer->Add(m_txtLog, 1, wxALL | wxEXPAND, 5);
     m_log = new wxLogStderr();
     wxLog::SetActiveTarget( new wxLogTextCtrl(m_txtLog) );
@@ -188,17 +190,25 @@ void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
     {
         wxLogMessage("Waiting for trigger...");
         wxYield();
-        usleep(500e3);
+        usleep(100e3);
     }
 
     // Take measurement
     m_vpp = osci_ptr->get_meas(m_osciChan, labdev::osci::VPP);
     osci_ptr->read_sample_data(m_osciChan, m_volt, m_time);
 
+    // Create transient graph and write to file
+    m_trans = new TGraph(m_time.size(), m_time.data(), m_volt.data());
+    m_trans->SetName("Transient");
+    m_trans->Write();
+
     // Store data in tree
     m_tree->Fill();
     wxLogMessage("Meas %03i: f=%.3eHz, VPP=%.3fV, n=%lu", 
         m_counter, m_freq, m_vpp, m_volt.size());
+    
+    // Update UI and pass events
+    wxYield();
 
     // Increase counter
     m_counter++;
@@ -213,12 +223,10 @@ void MainFrame::StartMeasurement()
     // Create output file
     if ( m_file && m_file->IsOpen() ) {
         m_file->Close();
-        //delete m_file;
-        //delete m_tree;
-        //m_file = nullptr;
-        //m_tree = nullptr;
     }
     m_file = new TFile(wxGetApp().DAQSettings.fileName.c_str(), "RECREATE");
+
+    // Setup data structures
     m_tree = new TTree("dataTree", "data");
     m_tree->Branch("vamp", &m_vpp);
     m_tree->Branch("freq", &m_freq);
@@ -252,10 +260,6 @@ void MainFrame::StopMeasurement()
     if ( m_file && m_file->IsOpen() ) {
         m_tree->Write();
         m_file->Close();
-        //delete m_file;
-        //delete m_tree;
-        //m_file = nullptr;
-        //m_tree = nullptr;
     }
     return;
 }

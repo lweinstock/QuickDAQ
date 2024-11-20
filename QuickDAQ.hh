@@ -9,6 +9,7 @@
 
 #include <TFile.h>
 #include <TTree.h>
+#include <TGraph.h>
 
 #include <labdev/tcpip_interface.hh>
 #include <labdev/devices/osci.hh>
@@ -47,6 +48,7 @@ private:
 
     TTree* m_tree;  // Root objects with raw pointers, since root does its own 
     TFile* m_file;  // resource management/ownership ...
+    TGraph* m_trans;
 
     float m_freq {0};
     float m_vpp {0};
