@@ -199,7 +199,10 @@ void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
 
     // Create transient graph and write to file
     m_trans = new TGraph(m_time.size(), m_time.data(), m_volt.data());
-    m_trans->SetName("Transient");
+    string transName = "Transient" + to_string(m_counter);
+    m_trans->SetName(transName.c_str());
+    string transTitle = "f = " + to_string(m_freq) + "Hz";
+    m_trans->SetTitle(transTitle.c_str());
     m_trans->Write();
 
     // Store data in tree
