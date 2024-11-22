@@ -4,12 +4,14 @@
 #include <labdev/devices/rigol/ds1000z.hh>
 #include <labdev/devices/rigol/dg4000.hh>
 
+#include <sstream>
+
 using namespace std;
 
 /*
  *      M A I N   F R A M E
  */
-
+ 
 MainFrame::MainFrame(const wxString &title)
     : wxFrame(NULL, wxID_ANY, title, wxDefaultPosition, wxSize(1400,800), 
         wxDEFAULT_FRAME_STYLE | wxWANTS_CHARS), 
@@ -59,11 +61,12 @@ MainFrame::MainFrame(const wxString &title)
         wxDefaultSize, wxPG_SPLITTER_AUTO_CENTER | wxPG_DEFAULT_STYLE);
     bSizerLeft->Add(m_propGrid, 1, wxALL | wxEXPAND, 5);
     m_propGrid->Append(new wxPropertyCategory("Acquisition Settings"));
-    m_propGrid->Append(new wxUIntProperty("Number of points", "nPts", wxGetApp().DAQSettings.nPoints));
-    m_propGrid->Append(new wxFloatProperty("Start frequency [Hz]", "fSta", wxGetApp().DAQSettings.fStart));
-    m_propGrid->Append(new wxFloatProperty("Stop frequency [Hz]", "fSto", wxGetApp().DAQSettings.fStop));
-    m_propGrid->Append(new wxFloatProperty("Amplitude [V]", "ampl", wxGetApp().DAQSettings.vAmplitude));
-    m_propGrid->Append(new wxStringProperty("Output file name", "fName", wxGetApp().DAQSettings.fileName));
+    m_propGrid->Append(new wxUIntProperty("Number of points", "nPts",wxGetApp().DAQSettings.nPoints));
+    m_propGrid->Append(new wxFloatProperty("Start frequency [Hz]", "fSta",wxGetApp().DAQSettings.fStart));
+    m_propGrid->Append(new wxFloatProperty("Stop frequency [Hz]", "fSto",wxGetApp().DAQSettings.fStop));
+    m_propGrid->Append(new wxUIntProperty("Horiz. scale factor", "nPerDiv",wxGetApp().DAQSettings.nPerDiv));
+    m_propGrid->Append(new wxFloatProperty("Amplitude [V]", "ampl",wxGetApp().DAQSettings.vAmplitude));
+    m_propGrid->Append(new wxStringProperty("Output file name", "fName",wxGetApp().DAQSettings.fileName));
 
     // Lower part: Start/Stop measurement
     wxBoxSizer* bSizerLower = new wxBoxSizer(wxHORIZONTAL);
@@ -132,7 +135,9 @@ void MainFrame::OnButtonStart(wxCommandEvent &ev)
 
     // Oscilloscope setup
     auto osci_ptr = wxGetApp().GetOsci();
-    osci_ptr->set_horz_base(0.25/wxGetApp().DAQSettings.fStart);
+    unsigned nPerDiv = wxGetApp().DAQSettings.nPerDiv;
+    float fSta = wxGetApp().DAQSettings.fStart;
+    osci_ptr->set_horz_base(nPerDiv/fSta);
 
     this->StartMeasurement();
     return;
@@ -164,6 +169,8 @@ void MainFrame::OnSettingChange(wxPropertyGridEvent &ev)
         wxGetApp().DAQSettings.fStop = value.GetDouble();
     } else if (name == "ampl") {
         wxGetApp().DAQSettings.vAmplitude = value.GetDouble();
+    } else if (name == "nPerDiv") {
+        wxGetApp().DAQSettings.nPerDiv = value.GetLong();
     } else if (name == "fName") {
         wxGetApp().DAQSettings.fileName = value.GetString();
     }
@@ -179,19 +186,17 @@ void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
     auto osci_ptr = wxGetApp().GetOsci();
 
     // Set frequency and osci time base
+    unsigned nPerDiv = wxGetApp().DAQSettings.nPerDiv;
     m_freq = m_freqSweep.at(m_counter);
     fgen_ptr->set_freq(m_fgenChan, m_freq);
-    osci_ptr->set_horz_base(0.25/m_freq);
+    osci_ptr->set_horz_base(nPerDiv/m_freq);
 
-    // Wait until waveform has settled
-    usleep(500e3);  // Replace by fgen->wait_to_complete() ?
-
-    while ( !osci_ptr->triggered() ) 
-    {
+    osci_ptr->single_shot();
+    do {
         wxLogMessage("Waiting for trigger...");
         wxYield();
-        usleep(100e3);
-    }
+        usleep(500e3);
+    } while ( !osci_ptr->stopped() );
 
     // Take measurement
     m_vpp = osci_ptr->get_meas(m_osciChan, labdev::osci::VPP);
@@ -205,13 +210,17 @@ void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
     m_trans->SetTitle(transTitle.c_str());
     m_trans->Write();
 
-    // Store data in tree
+    // Store data in tree & transient
     m_tree->Fill();
+    m_gr = new TGraph(m_time.size(), m_time.data(), m_volt.data());
+    stringstream ssTitle;
+    ssTitle << "Transient" << m_counter << " f = " << m_freq << "Hz";
+    m_gr->SetName(ssTitle.str().c_str()); 
+    m_gr->SetTitle(ssTitle.str().c_str()); 
+    m_gr->Write();
+
     wxLogMessage("Meas %03i: f=%.3eHz, VPP=%.3fV, n=%lu", 
-        m_counter, m_freq, m_vpp, m_volt.size());
-    
-    // Update UI and pass events
-    wxYield();
+        m_counter, m_freq, m_vpp, m_time.size());
 
     // Increase counter
     m_counter++;

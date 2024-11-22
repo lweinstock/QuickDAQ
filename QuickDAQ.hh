@@ -48,7 +48,7 @@ private:
 
     TTree* m_tree;  // Root objects with raw pointers, since root does its own 
     TFile* m_file;  // resource management/ownership ...
-    TGraph* m_trans;
+    TGraph* m_gr;
 
     float m_freq {0};
     float m_vpp {0};
@@ -71,6 +71,7 @@ public:
         float fStart {100e3};
         float fStop {10e6};
         float vAmplitude {20.};
+        unsigned nPerDiv {1};
         std::string fileName {"test.root"};
     } DAQSettings;
 

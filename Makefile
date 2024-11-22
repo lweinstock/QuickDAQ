@@ -20,12 +20,16 @@ LDFLAGS+=$(shell wx-config --optional-libs propgrid)
 CFLAGS+=$(shell root-config --cflags)
 LDFLAGS+=$(shell root-config --libs)
 
+# FFTW stuff
+CFLAGS+=$(shell pkg-config --cflags fftw3)
+LDFLAGS+=$(shell pkg-config --libs fftw3)
+
 BIN=QuickDAQ
 OBJ=
-#OBJ+=OsciSettings.o
-#OBJ+=FGenSettings.o
 
-.PHONY: all clean
+BIN2=SpectrumAnalysis
+
+.PHONY: all clean $(BIN) $(BIN2)
 
 all: $(BIN)
 
@@ -35,6 +39,9 @@ all: $(BIN)
 $(BIN): $(BIN).o $(OBJ)
 	$(CC) $^ -o $@ $(LDFLAGS)
 
+$(BIN2): $(BIN2).o
+	$(CC) $^ -o $@ $(LDFLAGS)
+
 clean:
 	rm -f *.o
-	rm -f $(BINS)
+	rm -f $(BIN) $(BIN2)
