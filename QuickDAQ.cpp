@@ -202,14 +202,6 @@ void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
     m_vpp = osci_ptr->get_meas(m_osciChan, labdev::osci::VPP);
     osci_ptr->read_sample_data(m_osciChan, m_volt, m_time);
 
-    // Create transient graph and write to file
-    m_trans = new TGraph(m_time.size(), m_time.data(), m_volt.data());
-    string transName = "Transient" + to_string(m_counter);
-    m_trans->SetName(transName.c_str());
-    string transTitle = "f = " + to_string(m_freq) + "Hz";
-    m_trans->SetTitle(transTitle.c_str());
-    m_trans->Write();
-
     // Store data in tree & transient
     m_tree->Fill();
     m_gr = new TGraph(m_time.size(), m_time.data(), m_volt.data());
