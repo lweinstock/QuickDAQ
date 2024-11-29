@@ -51,7 +51,7 @@ private:
     TGraph* m_gr;
 
     float m_freq {0};
-    float m_vpp {0};
+    float m_vpp {0}, m_vrms{0}, m_vamp{0};
     unsigned m_counter {0};
     unsigned m_osciChan {1}, m_fgenChan {1};
     std::vector<float> m_freqSweep {};

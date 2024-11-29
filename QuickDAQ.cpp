@@ -200,6 +200,8 @@ void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
 
     // Take measurement
     m_vpp = osci_ptr->get_meas(m_osciChan, labdev::osci::VPP);
+    m_vamp = osci_ptr->get_meas(m_osciChan, labdev::osci::VAMP);
+    m_vrms = osci_ptr->get_meas(m_osciChan, labdev::osci::VRMS);
     osci_ptr->read_sample_data(m_osciChan, m_volt, m_time);
 
     // Store data in tree & transient
@@ -232,7 +234,9 @@ void MainFrame::StartMeasurement()
 
     // Setup data structures
     m_tree = new TTree("dataTree", "data");
-    m_tree->Branch("vamp", &m_vpp);
+    m_tree->Branch("vpp", &m_vpp);
+    m_tree->Branch("vamp", &m_vamp);
+    m_tree->Branch("vrms", &m_vrms);
     m_tree->Branch("freq", &m_freq);
     m_tree->Branch("time", &m_time);
     m_tree->Branch("voltage", &m_volt);
