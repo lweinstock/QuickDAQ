@@ -30,7 +30,6 @@ public:
     void OnSettingChange(wxPropertyGridEvent &ev);
     void OnTimerUpdate(wxTimerEvent &ev);
 
-    void ReadTrace(std::vector<double> time, std::vector<double> volt);
     void StartMeasurement();
     void StopMeasurement();
 
@@ -48,7 +47,10 @@ private:
 
     TTree* m_tree;  // Root objects with raw pointers, since root does its own 
     TFile* m_file;  // resource management/ownership ...
-    TGraph* m_gr;
+    TGraph* m_transient;
+    TGraph* m_fVsVpp;
+    TGraph* m_fVsVamp;
+    TGraph* m_fVsVrms;
 
     float m_freq {0};
     float m_vpp {0}, m_vrms{0}, m_vamp{0};

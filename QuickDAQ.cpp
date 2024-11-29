@@ -94,6 +94,15 @@ MainFrame::MainFrame(const wxString &title)
     this->Bind(wxEVT_BUTTON, &MainFrame::OnButtonStart, this, BTN_START);
     this->Bind(wxEVT_BUTTON, &MainFrame::OnButtonStop, this, BTN_STOP);
     this->Bind(wxEVT_PG_CHANGED, &MainFrame::OnSettingChange, this);
+
+    // Setup final result graphs
+    m_fVsVamp = new TGraph();
+    m_fVsVamp->SetName("f_vs_amp");
+    m_fVsVpp = new TGraph();
+    m_fVsVpp->SetName("f_vs_vpp");
+    m_fVsVrms = new TGraph();
+    m_fVsVrms->SetName("f_vs_rms");
+
     return;
 }
 
@@ -206,12 +215,15 @@ void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
 
     // Store data in tree & transient
     m_tree->Fill();
-    m_gr = new TGraph(m_time.size(), m_time.data(), m_volt.data());
+    m_transient = new TGraph(m_time.size(), m_time.data(), m_volt.data());
     stringstream ssTitle;
     ssTitle << "Transient" << m_counter << " f = " << m_freq << "Hz";
-    m_gr->SetName(ssTitle.str().c_str()); 
-    m_gr->SetTitle(ssTitle.str().c_str()); 
-    m_gr->Write();
+    m_transient->SetName(ssTitle.str().c_str()); 
+    m_transient->SetTitle(ssTitle.str().c_str()); 
+    m_transient->Write();
+    m_fVsVamp->AddPoint(m_freq, m_vamp);
+    m_fVsVpp->AddPoint(m_freq, m_vpp);
+    m_fVsVrms->AddPoint(m_freq, m_vrms);
 
     wxLogMessage("Meas %03i: f=%.3eHz, VPP=%.3fV, n=%lu", 
         m_counter, m_freq, m_vpp, m_time.size());
@@ -266,9 +278,16 @@ void MainFrame::StopMeasurement()
     m_counter = 0;
 
     if ( m_file && m_file->IsOpen() ) {
+        m_fVsVamp->Write();
+        m_fVsVpp->Write();
+        m_fVsVrms->Write();
         m_tree->Write();
         m_file->Close();
     }
+
+    m_fVsVamp->Set(0);
+    m_fVsVpp->Set(0);
+    m_fVsVrms->Set(0);
     return;
 }
 
