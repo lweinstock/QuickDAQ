@@ -7,6 +7,8 @@
 #include <TTree.h>
 #include <TGraph.h>
 #include <TAxis.h>
+#include <TCanvas.h>
+#include <TH1.h>
 
 #include <fftw3.h>
 
@@ -37,6 +39,9 @@ int main(int argc, char** argv)
     outFName += "_spectrum.root";
     TFile* outFile = new TFile(outFName.c_str(), "RECREATE");
     TGraph* grSpec;
+    TCanvas* c1 = new TCanvas();
+    c1->SetLogx();
+    c1->SetLogy();
     TTree* outTree = new TTree("outTree", "spectrumData");
     vector<double> freqFFT, magnFFT;
     outTree->Branch("freqFFT", &freqFFT);
@@ -45,7 +50,6 @@ int main(int argc, char** argv)
     // Read data in
     unsigned n = inTree->GetEntries();
     cout << "Found " << n << " entries" << endl;
-
 
     for (unsigned i = 0; i < n; i++)
     {
@@ -74,7 +78,13 @@ int main(int argc, char** argv)
         ssTitle << "Spectrum" << i << " fsig = " << freq << "Hz";
         grSpec->SetName(ssTitle.str().c_str()); 
         grSpec->SetTitle(ssTitle.str().c_str()); 
-        grSpec->GetXaxis()->SetLimits(1e4, 1e9);
+        grSpec->GetXaxis()->SetLimits(1e4, 1e8);
+        //grSpec->GetYaxis()->SetLimits(1e-6, 1e-1);
+        grSpec->GetHistogram()->SetMinimum(1e-6);
+        grSpec->GetHistogram()->SetMaximum(1);
+        grSpec->Draw("APL");
+        c1->Update();
+        c1->SaveAs( (ssTitle.str() + ".png").c_str() );
         grSpec->Write();
         outTree->Fill();
 

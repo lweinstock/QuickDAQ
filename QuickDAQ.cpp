@@ -146,7 +146,8 @@ void MainFrame::OnButtonStart(wxCommandEvent &ev)
     auto osci_ptr = wxGetApp().GetOsci();
     unsigned nPerDiv = wxGetApp().DAQSettings.nPerDiv;
     float fSta = wxGetApp().DAQSettings.fStart;
-    osci_ptr->set_horz_base(nPerDiv/fSta);
+    if (nPerDiv)
+        osci_ptr->set_horz_base(nPerDiv/fSta);
 
     this->StartMeasurement();
     return;
@@ -198,7 +199,8 @@ void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
     unsigned nPerDiv = wxGetApp().DAQSettings.nPerDiv;
     m_freq = m_freqSweep.at(m_counter);
     fgen_ptr->set_freq(m_fgenChan, m_freq);
-    osci_ptr->set_horz_base(nPerDiv/m_freq);
+    if (nPerDiv)
+        osci_ptr->set_horz_base(nPerDiv/m_freq);
 
     osci_ptr->single_shot();
     do {
