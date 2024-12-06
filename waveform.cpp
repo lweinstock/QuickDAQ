@@ -160,7 +160,7 @@ waveform::filterFunction waveform::butterworthBandpass(double gain, double f1, d
     return [gain, f1, f2, n](double x) -> double {
         double f0 = sqrt(f2*f1);
         double a = sqrt(f2/f1);
-        return gain/sqrt(1 + pow( (x/f0 + f0/x)/a, 2*n));
+        return gain/sqrt(1 + pow( (x/f0 - f0/x)/a, 2*n));
     };
 }
 
@@ -171,10 +171,8 @@ waveform::filterFunction waveform::butterworthBandpass(double gain, double f1, d
 void waveform::checkStaSto(unsigned sta, unsigned sto) {
     if ( (sta < this->getSize()) && (sto < this->getSize()) )
         return;
-    else {
-        std::cerr << "Invalid start and stop values: " << sta << " - " << sto << std::endl;
-        abort();
-    }
+    std::cerr << "Invalid start and stop values: " << sta << " - " << sto << std::endl;
+    abort();
     return;
 }
 

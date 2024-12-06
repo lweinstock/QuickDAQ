@@ -75,15 +75,15 @@ int main(int argc, char** argv)
         }
 
         waveform transient(pTime->data(), pVolt->data(), pTime->size());
-        transient.applyFilter( waveform::gaus(1., freq, 0.2*freq) );
+        //transient.applyFilter( waveform::gaus(1., freq, 0.2*freq) );
         //transient.applyFilter( waveform::butterworthLowpass(1., 1.2*freq, 5) );
         //transient.applyFilter( waveform::butterworthHighpass(1., 0.8*freq, 5) );
-        //transient.applyFilter( waveform::butterworthBandpass(1., 0.8*freq, 1.2*freq, 5) );
+        transient.applyFilter( waveform::butterworthBandpass(1., 0.8*freq, 1.2*freq, 5) );
 
         waveform fftMagn, fftPhase;
         transient.getFFT(fftMagn, fftPhase);
-        unsigned start = static_cast<unsigned>(0.1*transient.getSize());
-        unsigned stop = static_cast<unsigned>(0.9*transient.getSize());
+        unsigned start = 1000;
+        unsigned stop = transient.getSize() - 1000;
         grRMSvsFreq->AddPoint(freq, transient.getRMS(start, stop));
 
         grMagn = new TGraph(fftMagn.getSize(), fftMagn.getX().data(), fftMagn.getY().data());
