@@ -25,7 +25,7 @@ CFLAGS+=$(shell pkg-config --cflags fftw3)
 LDFLAGS+=$(shell pkg-config --libs fftw3)
 
 BIN=QuickDAQ
-OBJ=
+OBJ=waveform.o
 
 BIN2=SpectrumAnalysis
 
@@ -39,7 +39,7 @@ all: $(BIN)
 $(BIN): $(BIN).o $(OBJ)
 	$(CC) $^ -o $@ $(LDFLAGS)
 
-$(BIN2): $(BIN2).o
+$(BIN2): $(BIN2).o $(OBJ)
 	$(CC) $^ -o $@ $(LDFLAGS)
 
 clean:

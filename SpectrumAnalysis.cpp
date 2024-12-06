@@ -8,9 +8,12 @@
 #include <TGraph.h>
 #include <TAxis.h>
 #include <TCanvas.h>
+#include <TPad.h>
 #include <TH1.h>
 
 #include <fftw3.h>
+
+#include "waveform.hh"
 
 using namespace std;
 
@@ -38,14 +41,24 @@ int main(int argc, char** argv)
     string outFName = inFName.substr(0, inFName.find(".root"));
     outFName += "_spectrum.root";
     TFile* outFile = new TFile(outFName.c_str(), "RECREATE");
-    TGraph* grSpec;
-    TCanvas* c1 = new TCanvas();
-    c1->SetLogx();
-    c1->SetLogy();
+
     TTree* outTree = new TTree("outTree", "spectrumData");
     vector<double> freqFFT, magnFFT;
     outTree->Branch("freqFFT", &freqFFT);
     outTree->Branch("magnFFT", &magnFFT);
+
+    TGraph* grMagn;
+    TGraph* grPhase;
+    TGraph* grTrans;
+    TGraph* grRMSvsFreq = new TGraph();
+
+    TCanvas* c1 = new TCanvas("", "Filter", 1200, 900);
+    c1->Divide(1, 3);
+    TPad* p1 = (TPad*)c1->cd(1);
+    p1->SetLogx();
+    p1->SetLogy();
+    TPad* p2 = (TPad*)c1->cd(2);
+    p2->SetLogx();
 
     // Read data in
     unsigned n = inTree->GetEntries();
@@ -56,44 +69,63 @@ int main(int argc, char** argv)
         inTree->GetEntry(i);
         cout << i << ": f=" << freq << ", vpp=" << vpp << endl;
 
-        unsigned nPts = pTime->size();
-        unsigned nFFT = nPts/2 + 1;
-        double timeStep = abs(pTime->at(0) - pTime->at(1));
-        fftw_complex* fft = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * nFFT);
-        fftw_plan plan = fftw_plan_dft_r2c_1d(nPts, pVolt->data(), fft, FFTW_ESTIMATE);
-        fftw_execute(plan);
-
-        freqFFT.clear();
-        magnFFT.clear();
-        for (int j = 0; j < nFFT; j++) 
-        {
-            double f = j/(timeStep * nPts);
-            double m = sqrt( fft[j][0]*fft[j][0] + fft[j][0]*fft[j][0] )/nPts;
-            freqFFT.push_back(f);
-            magnFFT.push_back(m);
+        if (pTime->size() == 0) {
+            cout << "Empty set" << endl;
+            continue;
         }
 
-        grSpec = new TGraph(freqFFT.size(), freqFFT.data(), magnFFT.data());
+        waveform transient(pTime->data(), pVolt->data(), pTime->size());
+        transient.applyFilter( waveform::gaus(1., freq, 0.2*freq) );
+        //transient.applyFilter( waveform::butterworthLowpass(1., 1.2*freq, 5) );
+        //transient.applyFilter( waveform::butterworthHighpass(1., 0.8*freq, 5) );
+        //transient.applyFilter( waveform::butterworthBandpass(1., 0.8*freq, 1.2*freq, 5) );
+
+        waveform fftMagn, fftPhase;
+        transient.getFFT(fftMagn, fftPhase);
+        unsigned start = static_cast<unsigned>(0.1*transient.getSize());
+        unsigned stop = static_cast<unsigned>(0.9*transient.getSize());
+        grRMSvsFreq->AddPoint(freq, transient.getRMS(start, stop));
+
+        grMagn = new TGraph(fftMagn.getSize(), fftMagn.getX().data(), fftMagn.getY().data());
         stringstream ssTitle;
-        ssTitle << "Spectrum" << i << " fsig = " << freq << "Hz";
-        grSpec->SetName(ssTitle.str().c_str()); 
-        grSpec->SetTitle(ssTitle.str().c_str()); 
-        grSpec->GetXaxis()->SetLimits(1e4, 1e8);
-        //grSpec->GetYaxis()->SetLimits(1e-6, 1e-1);
-        grSpec->GetHistogram()->SetMinimum(1e-6);
-        grSpec->GetHistogram()->SetMaximum(1);
-        grSpec->Draw("APL");
+        ssTitle << "Magnitude" << i << " fsig = " << freq << "Hz";
+        grMagn->SetName(ssTitle.str().c_str()); 
+        grMagn->SetTitle(ssTitle.str().c_str()); 
+        grMagn->GetXaxis()->SetLimits(1e4, 1e8);
+        grMagn->GetHistogram()->SetMinimum(1e-8);
+        grMagn->GetHistogram()->SetMaximum(1);
+        c1->cd(1);
+        grMagn->Draw("APL");
+
+        grPhase = new TGraph(fftPhase.getSize(), fftPhase.getX().data(), fftPhase.getY().data());
+        ssTitle.str("");
+        ssTitle << "Phase" << i << " fsig = " << freq << "Hz";
+        grPhase->SetName(ssTitle.str().c_str()); 
+        grPhase->SetTitle(ssTitle.str().c_str()); 
+        grPhase->GetXaxis()->SetLimits(1e4, 1e8);
+        grPhase->GetHistogram()->SetMinimum(-2 * M_PI);
+        grPhase->GetHistogram()->SetMaximum(2 * M_PI);
+        c1->cd(2);
+        grPhase->Draw("APL");
+
+        grTrans = new TGraph(transient.getSize(), transient.getX().data(), transient.getY().data());
+        ssTitle.str("");
+        ssTitle << "Transient" << i << " fsig = " << freq << "Hz";
+        grTrans->SetName(ssTitle.str().c_str()); 
+        grTrans->SetTitle(ssTitle.str().c_str());
+        grTrans->GetHistogram()->SetMinimum(-0.1);
+        grTrans->GetHistogram()->SetMaximum(0.1);
+        c1->cd(3);
+        grTrans->Draw("APL");
+
         c1->Update();
         c1->SaveAs( (ssTitle.str() + ".png").c_str() );
-        grSpec->Write();
+        grMagn->Write();
         outTree->Fill();
-
-        // FFT cleanup
-        fftw_destroy_plan(plan);
-        fftw_free(fft);
     }
 
     // Cleanup
+    grRMSvsFreq->Write();
     outTree->Write();
     outFile->Close();
     delete outFile;
