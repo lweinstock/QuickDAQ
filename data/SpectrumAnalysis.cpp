@@ -89,8 +89,8 @@ int main(int argc, char** argv)
         magnFFT = fftMagn.get_y();
         phaseFFT = fftPhase.get_y();
 
-        unsigned start = 1000;
-        unsigned stop = transient.get_size() - 1000;
+        unsigned start = static_cast<unsigned>(0.1 * transient.get_size());
+        unsigned stop = static_cast<unsigned>(0.9 * transient.get_size());
         grRMSvsFreq->AddPoint(freq, transient.get_rms(start, stop));
 
         grMagn = new TGraph(fftMagn.get_size(), fftMagn.get_x().data(), fftMagn.get_y().data());

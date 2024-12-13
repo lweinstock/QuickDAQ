@@ -75,6 +75,7 @@ public:
         float vAmplitude {20.};
         unsigned nPerDiv {1};
         std::string fileName {"test.root"};
+        bool quickDAQ {false};
     } DAQSettings;
 
     void InitOsci(std::string ip, unsigned port);

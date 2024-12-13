@@ -67,6 +67,7 @@ MainFrame::MainFrame(const wxString &title)
     m_propGrid->Append(new wxUIntProperty("Horiz. scale factor", "nPerDiv",wxGetApp().DAQSettings.nPerDiv));
     m_propGrid->Append(new wxFloatProperty("Amplitude [V]", "ampl",wxGetApp().DAQSettings.vAmplitude));
     m_propGrid->Append(new wxStringProperty("Output file name", "fName",wxGetApp().DAQSettings.fileName));
+    m_propGrid->Append(new wxBoolProperty("Quick DAQ", "quick",wxGetApp().DAQSettings.quickDAQ));
 
     // Lower part: Start/Stop measurement
     wxBoxSizer* bSizerLower = new wxBoxSizer(wxHORIZONTAL);
@@ -183,6 +184,8 @@ void MainFrame::OnSettingChange(wxPropertyGridEvent &ev)
         wxGetApp().DAQSettings.nPerDiv = value.GetLong();
     } else if (name == "fName") {
         wxGetApp().DAQSettings.fileName = value.GetString();
+    } else if (name == "quick") {
+        wxGetApp().DAQSettings.quickDAQ = value.GetBool();
     }
 
     return;
@@ -202,12 +205,16 @@ void MainFrame::OnTimerUpdate(wxTimerEvent &ev)
     if (nPerDiv)
         osci_ptr->set_horz_base(nPerDiv/m_freq);
 
-    osci_ptr->single_shot();
-    do {
-        wxLogMessage("Waiting for trigger...");
-        wxYield();
-        usleep(500e3);
-    } while ( !osci_ptr->stopped() );
+    if (!wxGetApp().DAQSettings.quickDAQ) {
+        osci_ptr->single_shot();
+        do {
+            wxLogMessage("Waiting for trigger...");
+            wxYield();
+            usleep(500e3);
+        } while ( !osci_ptr->stopped() );
+    } else {
+        osci_ptr->run();
+    }
 
     // Take measurement
     m_vpp = osci_ptr->get_meas(m_osciChan, labdev::osci::VPP);
