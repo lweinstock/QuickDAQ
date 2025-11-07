@@ -1,13 +1,13 @@
 # General compiler settings/flags
 CC=g++
 LDFLAGS=-lpthread
-CFLAGS=-Wall -std=c++20 -fPIC
+CFLAGS=-Wall -std=c++17 -fPIC
 # Debugging
 CFLAGS+=-g
 
 # labdev flags
-CFLAGS+=$(shell pkg-config --cflags liblabdev)
-LDFLAGS+=$(shell pkg-config --libs liblabdev)
+CFLAGS+=$(shell pkg-config --cflags labkit)
+LDFLAGS+=$(shell pkg-config --libs labkit)
 
 # wxWidget flags
 CFLAGS+=$(shell wx-config --cxxflags)
@@ -19,7 +19,7 @@ CFLAGS+=$(shell root-config --cflags)
 LDFLAGS+=$(shell root-config --libs)
 
 BIN=QuickDAQ
-OBJ=
+OBJ=plot.o
 
 .PHONY: all clean $(BIN)
 
