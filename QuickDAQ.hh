@@ -1,12 +1,12 @@
 #ifndef LABDAQ_HH
 #define LABDAQ_HH
 
-#include <condition_variable>
 #include <wx/wxprec.h>
 #ifndef WX_PRECOMP
     #include <wx/wx.h>
 #endif
 #include <wx/propgrid/propgrid.h>
+#include <wx/gauge.h>
 #include "plot.hh"
 
 #include <TFile.h>
@@ -58,6 +58,7 @@ protected:
     wxButton* m_btnFGenConnect;
     wxPropertyGrid* m_propGrid;
     wxPlot* m_plot;
+    wxGauge* m_progress;
 
 private:
     wxLog* m_log;

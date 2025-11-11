@@ -2,6 +2,7 @@
 #include "labkit/comms/tcpipcomm.hh"
 #include "labkit/devices/functiongenerator.hh"
 #include "labkit/devices/oscilloscope.hh"
+#include "wx/log.h"
 #include <labkit/exceptions.hh>
 
 #include <memory>
@@ -84,17 +85,21 @@ MainFrame::MainFrame(const wxString &title)
     bSizerLower->Add(btnStart, 1, wxALL | wxEXPAND, 5);
     bSizerLower->Add(btnStop, 1, wxALL | wxEXPAND, 5);
 
-    // Right part: plot and log
+    // Right part: plot, progress and log
     wxBoxSizer* bSizerRight = new wxBoxSizer(wxVERTICAL);
     globalSizer->Add(bSizerRight, 1, wxALL | wxEXPAND, 5);
 
     // Plot
     m_plot = new wxPlot(this, m_time, m_volt);
-    bSizerRight->Add(m_plot, 3, wxALL | wxEXPAND, 5);
+    bSizerRight->Add(m_plot, 2, wxALL | wxEXPAND, 5);
     m_plot->SetRangeX(0, 10);
     m_plot->SetRangeY(-10, +10);
     m_plot->SetTitleX("Time [s]");
     m_plot->SetTitleY("Amplitude [V]");
+
+    // Progress bar
+    m_progress = new wxGauge(this, wxID_ANY, 10);
+    bSizerRight->Add(m_progress, 0, wxALL | wxEXPAND, 5);
 
     // Log
     wxFont mono(12, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
@@ -243,6 +248,8 @@ void MainFrame::OnButtonStart(wxCommandEvent &ev)
 
     // ... and start DAQ thread
     m_stop_daq = false;
+    m_progress->SetRange(wxGetApp().DAQSettings.nPoints);
+    m_progress->SetValue(0);
     m_daq_thread = thread(&MainFrame::DataAcquisition, this, wxGetApp().DAQSettings);
 
     m_timerRefresh.Start(100);
@@ -371,6 +378,7 @@ void MainFrame::DataAcquisition(const Settings &s)
     wxLogMessage("Starting DAQ (%u steps, f = %.3e - %.3eHz) ...", sweep.size(), 
         *sweep.begin(), *(sweep.end() - 1));
 
+    int progress = 0;
     for (auto f : sweep)
     {
         if (m_stop_daq)
@@ -390,19 +398,44 @@ void MainFrame::DataAcquisition(const Settings &s)
             unique_lock<mutex> lock_osci(m_osci_mutex);
             auto& osci = wxGetApp().GetOsci();
             osci.setHorzBase(s.horzScaleFactor/f);  // Apply correct scale
-            if (s.quickDAQ)
+
+            // Adjust vertical scale
+            osci.run();
+            this_thread::sleep_for(chrono::milliseconds(100));
+
+            double vert_base = osci.getVertBase(m_osci_chan);
+            vpp = osci.getMeasurement(m_osci_chan, Oscilloscope::VPP);
+            
+            // If voltage is too low, decrease scale
+            while ( vpp < 4*vert_base )
             {
-                osci.run();
+                wxLogMessage("VPP too small (%.3f), vert %.3f -> %.3f", vpp,
+                    vert_base, 0.7*vert_base);
+                osci.setVertBase(m_osci_chan, 0.7*vert_base);
+                this_thread::sleep_for(chrono::milliseconds(500));
+                vpp = osci.getMeasurement(m_osci_chan, Oscilloscope::VPP);
+                vert_base = osci.getVertBase(m_osci_chan);
             }
-            else
+
+            // If voltage is too large, increase scale
+            while ( vpp > 6*vert_base )
+            {
+                wxLogMessage("VPP too large (%.3f), vert %.3f -> %.3f", vpp,
+                    vert_base, 1.3*vert_base);
+                osci.setVertBase(m_osci_chan, 1.3*vert_base);
+                this_thread::sleep_for(chrono::milliseconds(500));
+                vpp = osci.getMeasurement(m_osci_chan, Oscilloscope::VPP);
+                vert_base = osci.getVertBase(m_osci_chan);
+            }
+
+            if (!s.quickDAQ)
             {
                 osci.singleShot();
                 while (!osci.stopped())
-                    this_thread::sleep_for(chrono::milliseconds(500));
+                    this_thread::sleep_for(chrono::milliseconds(100));
             }
 
             this_thread::sleep_for(chrono::milliseconds(500));
-
             vpp = osci.getMeasurement(m_osci_chan, Oscilloscope::VPP);
             vamp = osci.getMeasurement(m_osci_chan, Oscilloscope::VAMP);
             vrms = osci.getMeasurement(m_osci_chan, Oscilloscope::VRMS);
@@ -415,14 +448,17 @@ void MainFrame::DataAcquisition(const Settings &s)
             grVrmsVsFreq.AddPoint(freq, vrms);
             grVampVsFreq.AddPoint(freq, vamp);
             outTree.Fill();
+            // Update progress bar
+            progress++;
+            m_progress->SetValue(progress);
 
-            wxLogMessage("\tRead %lu points of data (VPP=%.3fV/VAMP=%.3fV/"
-                "VRMS=%.3fV)", time.size(), vpp, vamp, vrms);
+            wxLogMessage("[%i] Read %lu points of data (VPP=%.3fV/VAMP=%.3fV/"
+                "VRMS=%.3fV)", progress, time.size(), vpp, vamp, vrms);
         }
         catch (const Exception &ex)
         {
             wxLogMessage("Failed to read data: %s", ex.what());
-            m_stop_daq = false;
+            m_stop_daq = false; 
             break;
         }
 
